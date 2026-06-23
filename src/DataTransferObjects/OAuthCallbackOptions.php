@@ -17,6 +17,7 @@ final readonly class OAuthCallbackOptions
         public ProviderType $type,
         public string $code,
         public OAuthState $state,
+        public ?string $redirect = null,
     ) {
     }
 }

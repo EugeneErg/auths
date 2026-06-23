@@ -261,9 +261,9 @@ readonly class AuthService
             throw new AuthVerificationInvalidException('Use verifyOAuthCallback() for OAuth verifications.');
         }
 
-        $address = new ChannelAddress($verification->address);
+        $address = $verification->address;
         $identity = $this->readAuthIdentityRepository->find(
-            new ProviderType($verification->type),
+            $verification->type,
             $address,
         );
 
@@ -272,9 +272,9 @@ readonly class AuthService
         });
 
         return new VerificationResult(
-            action: new Action($verification->action),
+            action: $verification->action,
             address: $address,
-            userId: $identity !== null ? new UserId($identity->userId) : ($verification->userId !== null ? new UserId($verification->userId) : null),
+            userId: $identity->userId ?? $verification->userId,
             identity: $identity,
         );
     }
@@ -306,7 +306,7 @@ readonly class AuthService
         }
 
         // Провайдер обменивает code на адрес пользователя у себя (token endpoint + userinfo)
-        $address = $provider->exchangeCode($options->code, $options->state);
+        $address = $provider->exchangeCode($options->code, $options->state, $options->redirect);
         $identity = $this->readAuthIdentityRepository->find($options->type, $address);
 
         $this->transaction->transaction(function () use ($verification, $now): void {
@@ -314,9 +314,9 @@ readonly class AuthService
         });
 
         return new VerificationResult(
-            action: new Action($verification->action),
+            action: $verification->action,
             address: $address,
-            userId: $identity !== null ? new UserId($identity->userId) : ($verification->userId !== null ? new UserId($verification->userId) : null),
+            userId: $identity->userId ?? $verification->userId,
             identity: $identity,
         );
     }
@@ -414,7 +414,7 @@ readonly class AuthService
         return new VerificationResult(
             action: $this->authorizationAction,
             address: $address,
-            userId: $identity !== null ? new UserId($identity->userId) : null,
+            userId: $identity->userId ?? null,
             identity: $identity,
         );
     }
@@ -475,7 +475,7 @@ readonly class AuthService
                 type: $type,
                 address: $address,
                 createdAt: $createdAt,
-                userId: $identity !== null ? new UserId($identity->userId) : null,
+                userId: $identity->userId ?? null,
             );
 
             return $this->writeScenarioStepRepository->create(
@@ -593,13 +593,13 @@ readonly class AuthService
                     type: $type,
                     address: $response->address,
                     createdAt: $createdAt,
-                    userId: $authIdentity !== null ? new UserId($authIdentity->userId) : null,
+                    userId: $authIdentity->userId ?? null,
                     result: $scenarioResult,
                 )
                 : $this->writeScenarioRepository->update(
                     scenario: $current->getScenario(),
                     result: $scenarioResult,
-                    userId: $current->userId ?? ($authIdentity !== null ? new UserId($authIdentity->userId) : null),
+                    userId: $current->userId ?? $authIdentity->userId ?? null,
                 );
             $userStep = $this->writeScenarioStepRepository->create(
                 scenarioId: $scenario->id,

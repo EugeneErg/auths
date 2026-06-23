@@ -23,5 +23,5 @@ interface ProviderCallbackInterface extends ProviderInterface
      * Обменивает OAuth code на идентификатор пользователя у провайдера.
      * Внутри делает запрос к провайдеру (token endpoint + userinfo).
      */
-    public function exchangeCode(CallbackCode $code, OAuthState $state, ?string $redirect): ChannelAddress;
+    public function exchangeCode(string $code, OAuthState $state, ?string $redirect): ChannelAddress;
 }
