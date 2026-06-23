@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace EugeneErg\Auths\DataTransferObjects;
 
-use EugeneErg\Auths\ValueObjects\CallbackCode;
 use EugeneErg\Auths\ValueObjects\OAuthState;
 use EugeneErg\Auths\ValueObjects\ProviderType;
 
@@ -16,7 +15,7 @@ final readonly class OAuthCallbackOptions
 {
     public function __construct(
         public ProviderType $type,
-        public CallbackCode $code,
+        public string $code,
         public OAuthState $state,
     ) {
     }

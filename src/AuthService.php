@@ -26,6 +26,7 @@ use EugeneErg\Auths\Contracts\TransactionInterface;
 use EugeneErg\Auths\DataTransferObjects\IncomingMessage;
 use EugeneErg\Auths\DataTransferObjects\IssuedCodeOptions;
 use EugeneErg\Auths\DataTransferObjects\OAuthCallbackOptions;
+use EugeneErg\Auths\DataTransferObjects\OAuthStateOptions;
 use EugeneErg\Auths\DataTransferObjects\OutgoingStep;
 use EugeneErg\Auths\DataTransferObjects\Scenario;
 use EugeneErg\Auths\DataTransferObjects\ScenarioResult;
@@ -46,7 +47,7 @@ use EugeneErg\Auths\Exceptions\AuthVerificationAlreadyUsedException;
 use EugeneErg\Auths\Exceptions\AuthVerificationExpiredException;
 use EugeneErg\Auths\Exceptions\AuthVerificationInvalidException;
 use EugeneErg\Auths\ValueObjects\Action;
-use EugeneErg\Auths\ValueObjects\CallbackCode;
+use EugeneErg\Auths\ValueObjects\AuthVerificationToken;
 use EugeneErg\Auths\ValueObjects\ChannelAddress;
 use EugeneErg\Auths\ValueObjects\IssuedCode;
 use EugeneErg\Auths\ValueObjects\OAuthState;
@@ -58,6 +59,7 @@ use EugeneErg\Auths\ValueObjects\UserId;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\RequestInterface;
+use Random\RandomException;
 
 /**
  * Основной сервис аутентификации.
@@ -117,7 +119,7 @@ readonly class AuthService
     /**
      * @throws AuthExceptionInterface
      */
-    public function getIssuedTokenForAuthorization(IssuedCodeOptions $options): string
+    public function getIssuedTokenForAuthorization(IssuedCodeOptions $options): AuthVerificationToken
     {
         return $this->createIssuedVerification($options, $this->authorizationAction)->token;
     }
@@ -125,7 +127,7 @@ readonly class AuthService
     /**
      * @throws AuthExceptionInterface
      */
-    public function getIssuedTokenForAttach(IssuedCodeOptions $options, UserId $userId): string
+    public function getIssuedTokenForAttach(IssuedCodeOptions $options, UserId $userId): AuthVerificationToken
     {
         $this->assertCanAttach($userId, $options->type);
 
@@ -135,7 +137,7 @@ readonly class AuthService
     /**
      * @throws AuthExceptionInterface
      */
-    public function getIssuedTokenForRemove(IssuedCodeOptions $options, UserId $userId): string
+    public function getIssuedTokenForRemove(IssuedCodeOptions $options, UserId $userId): AuthVerificationToken
     {
         $this->assertIdentityExists($userId, $options->type);
 
@@ -145,7 +147,7 @@ readonly class AuthService
     /**
      * @throws AuthExceptionInterface
      */
-    public function getIssuedTokenForAction(IssuedCodeOptions $options, UserId $userId, Action $action): string
+    public function getIssuedTokenForAction(IssuedCodeOptions $options, UserId $userId, Action $action): AuthVerificationToken
     {
         return $this->createIssuedVerification($options, $action, $userId)->token;
     }
@@ -157,7 +159,7 @@ readonly class AuthService
     /**
      * @throws AuthExceptionInterface
      */
-    public function sendVerificationCodeForAuthorization(SentCodeOptions $options): string
+    public function sendVerificationCodeForAuthorization(SentCodeOptions $options): AuthVerificationToken
     {
         return $this->createSentVerification($options, $this->authorizationAction)->token;
     }
@@ -165,7 +167,7 @@ readonly class AuthService
     /**
      * @throws AuthExceptionInterface
      */
-    public function sendVerificationCodeForAttach(SentCodeOptions $options, UserId $userId): string
+    public function sendVerificationCodeForAttach(SentCodeOptions $options, UserId $userId): AuthVerificationToken
     {
         $this->assertCanAttach($userId, $options->type);
 
@@ -175,7 +177,7 @@ readonly class AuthService
     /**
      * @throws AuthExceptionInterface
      */
-    public function sendVerificationCodeForRemove(SentCodeOptions $options, UserId $userId): string
+    public function sendVerificationCodeForRemove(SentCodeOptions $options, UserId $userId): AuthVerificationToken
     {
         $this->assertIdentityExists($userId, $options->type);
 
@@ -185,7 +187,7 @@ readonly class AuthService
     /**
      * @throws AuthExceptionInterface
      */
-    public function sendVerificationCodeForAction(SentCodeOptions $options, UserId $userId, Action $action): string
+    public function sendVerificationCodeForAction(SentCodeOptions $options, UserId $userId, Action $action): AuthVerificationToken
     {
         return $this->createSentVerification($options, $action, $userId)->token;
     }
@@ -200,37 +202,37 @@ readonly class AuthService
      *
      * @throws AuthExceptionInterface
      */
-    public function generateOAuthStateForAuthorization(ProviderType $type, DateInterval $ttl): OAuthState
+    public function generateOAuthStateForAuthorization(ProviderType $type, DateInterval $ttl): OAuthStateOptions
     {
-        return $this->createOAuthStateVerification($type, $ttl, $this->authorizationAction)->code;
+        return $this->createOAuthStateVerification($type, $ttl, $this->authorizationAction);
     }
 
     /**
      * @throws AuthExceptionInterface
      */
-    public function generateOAuthStateForAttach(ProviderType $type, DateInterval $ttl, UserId $userId): OAuthState
+    public function generateOAuthStateForAttach(ProviderType $type, DateInterval $ttl, UserId $userId): OAuthStateOptions
     {
         $this->assertCanAttach($userId, $type);
 
-        return $this->createOAuthStateVerification($type, $ttl, $this->attachAction, $userId)->code;
+        return $this->createOAuthStateVerification($type, $ttl, $this->attachAction, $userId);
     }
 
     /**
      * @throws AuthExceptionInterface
      */
-    public function generateOAuthStateForRemove(ProviderType $type, DateInterval $ttl, UserId $userId): OAuthState
+    public function generateOAuthStateForRemove(ProviderType $type, DateInterval $ttl, UserId $userId): OAuthStateOptions
     {
         $this->assertIdentityExists($userId, $type);
 
-        return $this->createOAuthStateVerification($type, $ttl, $this->removeAction, $userId)->code;
+        return $this->createOAuthStateVerification($type, $ttl, $this->removeAction, $userId);
     }
 
     /**
      * @throws AuthExceptionInterface
      */
-    public function generateOAuthStateForAction(ProviderType $type, DateInterval $ttl, UserId $userId, Action $action): OAuthState
+    public function generateOAuthStateForAction(ProviderType $type, DateInterval $ttl, UserId $userId, Action $action): OAuthStateOptions
     {
-        return $this->createOAuthStateVerification($type, $ttl, $action, $userId)->code;
+        return $this->createOAuthStateVerification($type, $ttl, $action, $userId);
     }
 
     // -------------------------------------------------------------------------
@@ -743,13 +745,14 @@ readonly class AuthService
 
     /**
      * @throws AuthExceptionInterface
+     * @throws RandomException
      */
     private function createOAuthStateVerification(
         ProviderType $type,
         DateInterval $ttl,
         Action $action,
         UserId|null $userId = null,
-    ): AuthVerification {
+    ): OAuthStateOptions {
         $provider = $this->getProvider($type);
 
         if (!$provider instanceof ProviderCallbackInterface) {
@@ -757,19 +760,20 @@ readonly class AuthService
         }
 
         $state = new OAuthState(bin2hex(random_bytes(32)));
-
-        return $this->createVerification(
+        $result = $this->createVerification(
             type: $type,
             code: $state,
             action: $action,
             ttl: $ttl,
             userId: $userId,
         );
+
+        return new OAuthStateOptions($state, $result->token);
     }
 
     private function createVerification(
         ProviderType $type,
-        CallbackCode|IssuedCode|SentCode|OAuthState $code,
+        IssuedCode|SentCode|OAuthState $code,
         Action $action,
         DateInterval $ttl,
         UserId|null $userId = null,
