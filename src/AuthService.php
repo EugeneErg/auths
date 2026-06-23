@@ -99,7 +99,6 @@ readonly class AuthService
         private WriteScenarioStepRepositoryInterface $writeScenarioStepRepository,
         private TransactionInterface $transaction,
         private string|null $defaultScenario = null,
-        private Action $registrationAction = new Action('registration'),
         private Action $authorizationAction = new Action('authorization'),
         private Action $removeAction = new Action('remove'),
         private Action $attachAction = new Action('attach'),
@@ -114,14 +113,6 @@ readonly class AuthService
     // -------------------------------------------------------------------------
     // IssuedCode: сервис выдаёт код пользователю
     // -------------------------------------------------------------------------
-
-    /**
-     * @throws AuthExceptionInterface
-     */
-    public function getIssuedTokenForRegistration(IssuedCodeOptions $options): string
-    {
-        return $this->createIssuedVerification($options, $this->registrationAction)->token;
-    }
 
     /**
      * @throws AuthExceptionInterface
@@ -162,14 +153,6 @@ readonly class AuthService
     // -------------------------------------------------------------------------
     // SentCode: сервис отправляет код пользователю
     // -------------------------------------------------------------------------
-
-    /**
-     * @throws AuthExceptionInterface
-     */
-    public function sendVerificationCodeForRegistration(SentCodeOptions $options): string
-    {
-        return $this->createSentVerification($options, $this->registrationAction)->token;
-    }
 
     /**
      * @throws AuthExceptionInterface
@@ -215,14 +198,6 @@ readonly class AuthService
      * Генерирует OAuth state и сохраняет верификацию.
      * Возвращает state фронту — фронт сам строит URL к провайдеру.
      *
-     * @throws AuthExceptionInterface
-     */
-    public function generateOAuthStateForRegistration(ProviderType $type, DateInterval $ttl): OAuthState
-    {
-        return $this->createOAuthStateVerification($type, $ttl, $this->registrationAction)->code;
-    }
-
-    /**
      * @throws AuthExceptionInterface
      */
     public function generateOAuthStateForAuthorization(ProviderType $type, DateInterval $ttl): OAuthState
