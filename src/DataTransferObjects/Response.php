@@ -1,13 +1,13 @@
 <?php
 
-declare(strict_types = 1);
+declare(strict_types=1);
 
-namespace EuegeneErg\Auths\DataTransferObjects;
+namespace EugeneErg\Auths\DataTransferObjects;
 
 use DateTimeImmutable;
-use EuegeneErg\Auths\Contracts\Scenario\MessagePartInterface;
-use EuegeneErg\Auths\ValueObjects\AuthIdentityValue;
-use EuegeneErg\Auths\ValueObjects\ScenarioStepExternalId;
+use EugeneErg\Auths\Contracts\Scenario\MessagePartInterface;
+use EugeneErg\Auths\ValueObjects\ChannelAddress;
+use EugeneErg\Auths\ValueObjects\ScenarioStepExternalId;
 
 final readonly class Response
 {
@@ -17,9 +17,9 @@ final readonly class Response
      */
     public function __construct(
         public ScenarioStepExternalId $id,
-        public AuthIdentityValue $value,
+        public ChannelAddress $address,
         public DateTimeImmutable $processedAt,
-        public ?ScenarioStepExternalId $replyTo = null,
+        public ScenarioStepExternalId|null $replyTo = null,
         public array $parts = [],
         public array $attachments = [],
     ) {

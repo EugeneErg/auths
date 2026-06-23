@@ -2,22 +2,23 @@
 
 declare(strict_types=1);
 
-namespace EuegeneErg\Auths\Contracts\Repositories\Read;
+namespace EugeneErg\Auths\Contracts\Repositories\Read;
 
-use EuegeneErg\Auths\DataTransferObjects\ScenarioStep;
-use EuegeneErg\Auths\ValueObjects\AuthIdentityValue;
-use EuegeneErg\Auths\ValueObjects\ProviderType;
-use EuegeneErg\Auths\ValueObjects\ScenarioStepExternalId;
-use EuegeneErg\Auths\ValueObjects\ScenarioStepId;
+use EugeneErg\Auths\DataTransferObjects\ScenarioStep;
+use EugeneErg\Auths\ValueObjects\ChannelAddress;
+use EugeneErg\Auths\ValueObjects\ProviderType;
+use EugeneErg\Auths\ValueObjects\ScenarioStepExternalId;
+use EugeneErg\Auths\ValueObjects\ScenarioStepId;
 
 interface ReadScenarioStepRepositoryInterface
 {
     public function findByMessage(
         ProviderType $type,
-        AuthIdentityValue $value,
+        ChannelAddress $address,
         ScenarioStepExternalId $externalId,
-    ): ?ScenarioStep;
-    public function findLast(ProviderType $type, AuthIdentityValue $value): ?ScenarioStep;
+    ): ScenarioStep|null;
 
-    public function findById(ScenarioStepId $id): ?ScenarioStep;
+    public function findLast(ProviderType $type, ChannelAddress $address): ScenarioStep|null;
+
+    public function findById(ScenarioStepId $id): ScenarioStep|null;
 }

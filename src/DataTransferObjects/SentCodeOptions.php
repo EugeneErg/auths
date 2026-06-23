@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace EuegeneErg\Auths\DataTransferObjects;
+namespace EugeneErg\Auths\DataTransferObjects;
 
 use DateInterval;
-use EuegeneErg\Auths\ValueObjects\ProviderType;
-use EuegeneErg\Auths\ValueObjects\SentCode;
+use EugeneErg\Auths\ValueObjects\ProviderType;
+use EugeneErg\Auths\ValueObjects\SentCode;
 
 final readonly class SentCodeOptions
 {

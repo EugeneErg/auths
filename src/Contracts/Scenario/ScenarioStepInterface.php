@@ -2,15 +2,17 @@
 
 declare(strict_types=1);
 
-namespace EuegeneErg\Auths\Contracts\Scenario;
+namespace EugeneErg\Auths\Contracts\Scenario;
 
-use EuegeneErg\Auths\DataTransferObjects\ScenarioRequest;
-use EuegeneErg\Auths\DataTransferObjects\ScenarioResponse;
+use EugeneErg\Auths\DataTransferObjects\IncomingMessage;
+use EugeneErg\Auths\DataTransferObjects\OutgoingStep;
 use JsonSerializable;
 
 interface ScenarioStepInterface extends JsonSerializable
 {
-    public function jsonSerialize(): array;
     public static function fromArray(array $data): self;
-    public function run(?ScenarioResponse $request = null): ScenarioRequest|ScenarioResultInterface;
+
+    public function jsonSerialize(): array;
+
+    public function run(IncomingMessage|null $message = null): OutgoingStep|ScenarioResultInterface;
 }

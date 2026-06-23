@@ -1,8 +1,8 @@
 <?php
 
-declare(strict_types = 1);
+declare(strict_types=1);
 
-namespace EuegeneErg\Auths\ValueObjects;
+namespace EugeneErg\Auths\ValueObjects;
 
 final readonly class IssuedCode
 {

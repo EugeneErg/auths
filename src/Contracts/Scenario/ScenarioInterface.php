@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace EuegeneErg\Auths\Contracts\Scenario;
+namespace EugeneErg\Auths\Contracts\Scenario;
 
-use EuegeneErg\Auths\DataTransferObjects\Scenario;
-use EuegeneErg\Auths\DataTransferObjects\ScenarioRequest;
-use EuegeneErg\Auths\DataTransferObjects\ScenarioResponse;
+use EugeneErg\Auths\DataTransferObjects\IncomingMessage;
+use EugeneErg\Auths\DataTransferObjects\OutgoingStep;
+use EugeneErg\Auths\DataTransferObjects\Scenario;
 
 interface ScenarioInterface
 {
@@ -20,5 +20,5 @@ interface ScenarioInterface
      */
     public static function getResults(): array;
 
-    public function run(?ScenarioResponse $request = null): ScenarioRequest|ScenarioResultInterface|self|Scenario;
+    public function run(IncomingMessage|null $message = null): OutgoingStep|ScenarioResultInterface|self|Scenario;
 }

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace EuegeneErg\Auths\Contracts\Adapters;
+namespace EugeneErg\Auths\Contracts\Adapters;
 
 interface ProviderInterface
 {

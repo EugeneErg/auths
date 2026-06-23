@@ -2,25 +2,31 @@
 
 declare(strict_types=1);
 
-namespace EuegeneErg\Auths\Contracts\Repositories\Write;
+namespace EugeneErg\Auths\Contracts\Repositories\Write;
 
 use DateTimeImmutable;
-use EuegeneErg\Auths\Entities\AuthVerification;
-use EuegeneErg\Auths\ValueObjects\Action;
-use EuegeneErg\Auths\ValueObjects\InscribedCode;
-use EuegeneErg\Auths\ValueObjects\IssuedCode;
-use EuegeneErg\Auths\ValueObjects\ProviderType;
-use EuegeneErg\Auths\ValueObjects\SentCode;
-use EuegeneErg\Auths\ValueObjects\UserId;
+use EugeneErg\Auths\Entities\AuthVerification;
+use EugeneErg\Auths\ValueObjects\Action;
+use EugeneErg\Auths\ValueObjects\CallbackCode;
+use EugeneErg\Auths\ValueObjects\IssuedCode;
+use EugeneErg\Auths\ValueObjects\OAuthState;
+use EugeneErg\Auths\ValueObjects\ProviderType;
+use EugeneErg\Auths\ValueObjects\SentCode;
+use EugeneErg\Auths\ValueObjects\UserId;
 
 interface WriteAuthVerificationRepositoryInterface
 {
     public function create(
         ProviderType $type,
-        InscribedCode|IssuedCode|SentCode $code,
+        CallbackCode|IssuedCode|SentCode|OAuthState $code,
         DateTimeImmutable $createdAt,
         DateTimeImmutable $expiresAt,
         Action $action,
-        ?UserId $userId = null,
+        UserId|null $userId = null,
     ): AuthVerification;
+
+    /**
+     * Помечает верификацию использованной. После этого повторный verify() должен падать.
+     */
+    public function consume(AuthVerification $verification, DateTimeImmutable $consumedAt): void;
 }

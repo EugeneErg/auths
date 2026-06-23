@@ -2,41 +2,42 @@
 
 declare(strict_types=1);
 
-namespace EuegeneErg\Auths\DataTransferObjects;
+namespace EugeneErg\Auths\DataTransferObjects;
 
 use DateTimeImmutable;
-use EuegeneErg\Auths\ValueObjects\AuthIdentityValue;
-use EuegeneErg\Auths\ValueObjects\ProviderType;
-use EuegeneErg\Auths\ValueObjects\ScenarioStepExternalId;
-use EuegeneErg\Auths\ValueObjects\ScenarioId;
-use EuegeneErg\Auths\ValueObjects\ScenarioStepId;
-use EuegeneErg\Auths\ValueObjects\UserId;
+use EugeneErg\Auths\Entities\Scenario;
+use EugeneErg\Auths\ValueObjects\ChannelAddress;
+use EugeneErg\Auths\ValueObjects\ProviderType;
+use EugeneErg\Auths\ValueObjects\ScenarioId;
+use EugeneErg\Auths\ValueObjects\ScenarioStepExternalId;
+use EugeneErg\Auths\ValueObjects\ScenarioStepId;
+use EugeneErg\Auths\ValueObjects\UserId;
 
 final readonly class ScenarioStep
 {
     public function __construct(
         public ScenarioId $scenarioId,
         public string $scenarioName,
-        public AuthIdentityValue $value,
+        public ChannelAddress $address,
         public ProviderType $type,
         public ScenarioStepId $stepId,
         public ScenarioStepExternalId $externalId,
         public DateTimeImmutable $createdAt,
-        public ?string $stepName,
+        public string|null $stepName,
         public array $data,
-        public ?ScenarioResult $result = null,
-        public ?ScenarioStepId $replyToId = null,
-        public ?ScenarioStepExternalId $replyToExternalId = null,
-        public ?UserId $userId = null,
+        public ScenarioResult|null $result = null,
+        public ScenarioStepId|null $replyToId = null,
+        public ScenarioStepExternalId|null $replyToExternalId = null,
+        public UserId|null $userId = null,
     ) {
     }
 
-    public function getScenario(): \EuegeneErg\Auths\Entities\Scenario
+    public function getScenario(): Scenario
     {
-        return new \EuegeneErg\Auths\Entities\Scenario(
+        return new Scenario(
             id: $this->scenarioId,
             name: $this->scenarioName,
-            value: $this->value,
+            address: $this->address,
             type: $this->type,
             createdAt: $this->createdAt,
             userId: $this->userId,

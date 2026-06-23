@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace EuegeneErg\Auths\Contracts\Repositories\Write;
+namespace EugeneErg\Auths\Contracts\Repositories\Write;
 
 use DateTimeImmutable;
-use EuegeneErg\Auths\Entities\ScenarioStep;
-use EuegeneErg\Auths\ValueObjects\ScenarioId;
-use EuegeneErg\Auths\ValueObjects\ScenarioStepExternalId;
-use EuegeneErg\Auths\ValueObjects\ScenarioStepId;
+use EugeneErg\Auths\Entities\ScenarioStep;
+use EugeneErg\Auths\ValueObjects\ScenarioId;
+use EugeneErg\Auths\ValueObjects\ScenarioStepExternalId;
+use EugeneErg\Auths\ValueObjects\ScenarioStepId;
 
 interface WriteScenarioStepRepositoryInterface
 {
@@ -17,9 +17,9 @@ interface WriteScenarioStepRepositoryInterface
         ScenarioStepExternalId $externalId,
         DateTimeImmutable $createdAt,
         DateTimeImmutable $processedAt,
-        ?string $name,
+        string|null $name,
         array $data,
-        ?ScenarioStepExternalId $replyToExternalId,
-        ?ScenarioStepId $replyToId,
+        ScenarioStepExternalId|null $replyToExternalId,
+        ScenarioStepId|null $replyToId,
     ): ScenarioStep;
 }

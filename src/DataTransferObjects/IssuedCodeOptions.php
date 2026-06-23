@@ -2,13 +2,11 @@
 
 declare(strict_types=1);
 
-namespace EuegeneErg\Auths\DataTransferObjects;
+namespace EugeneErg\Auths\DataTransferObjects;
 
 use DateInterval;
-use EuegeneErg\Auths\ValueObjects\InscribedCode;
-use EuegeneErg\Auths\ValueObjects\IssuedCode;
-use EuegeneErg\Auths\ValueObjects\ProviderType;
-use EuegeneErg\Auths\ValueObjects\SentCode;
+use EugeneErg\Auths\ValueObjects\IssuedCode;
+use EugeneErg\Auths\ValueObjects\ProviderType;
 
 final readonly class IssuedCodeOptions
 {

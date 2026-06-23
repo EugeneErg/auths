@@ -2,33 +2,35 @@
 
 declare(strict_types=1);
 
-namespace EuegeneErg\Auths\DataTransferObjects;
+namespace EugeneErg\Auths\DataTransferObjects;
 
 use Closure;
-use EuegeneErg\Auths\Contracts\Scenario\ScenarioResultInterface;
-use EuegeneErg\Auths\Contracts\Scenario\ScenarioStepInterface;
+use EugeneErg\Auths\Contracts\Scenario\ScenarioResultInterface;
+use EugeneErg\Auths\Contracts\Scenario\ScenarioStepInterface;
+
+use const E_USER_WARNING;
 
 /**
- * @property-read null|ScenarioResponse $scenario
+ * @property IncomingMessage|null $scenario
  */
 final readonly class Scenario
 {
     public function __construct(
         public string $name,
         public bool $current,
-        public ?ScenarioStepInterface $step = null,
-        private null|ScenarioResponse|Closure $scenario = null,
-        public ?ScenarioResultInterface $result = null,
+        public ScenarioStepInterface|null $step = null,
+        private IncomingMessage|Closure|null $scenario = null,
+        public ScenarioResultInterface|null $result = null,
     ) {
     }
 
-    public function __get(string $name): ?ScenarioResponse
+    public function __get(string $name): IncomingMessage|null
     {
         if ($name === 'scenario') {
             return $this->scenario instanceof Closure ? ($this->scenario)() : $this->scenario;
         }
 
-        trigger_error('Undefined property: ' . __CLASS__ . '"::$' . $name, E_USER_WARNING);
+        trigger_error('Undefined property: ' . __CLASS__ . '::$' . $name, E_USER_WARNING);
 
         return null;
     }

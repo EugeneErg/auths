@@ -1,10 +1,10 @@
 <?php
 
-declare(strict_types = 1);
+declare(strict_types=1);
 
-namespace EuegeneErg\Auths\ValueObjects;
+namespace EugeneErg\Auths\ValueObjects;
 
-use EuegeneErg\Auths\Contracts\ValueObjectInterface;
+use EugeneErg\Auths\Contracts\ValueObjectInterface;
 
 final readonly class ScenarioId implements ValueObjectInterface
 {

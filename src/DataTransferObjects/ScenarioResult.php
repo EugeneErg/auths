@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace EuegeneErg\Auths\DataTransferObjects;
+namespace EugeneErg\Auths\DataTransferObjects;
 
 final readonly class ScenarioResult
 {
