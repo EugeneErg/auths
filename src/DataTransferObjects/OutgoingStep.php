@@ -9,7 +9,8 @@ use EugeneErg\Auths\Contracts\Scenario\ScenarioStepInterface;
 
 /**
  * Исходящий шаг сценария — ответ сценария пользователю.
- * Содержит следующий шаг для отправки и флаг: ответить в той же цепочке или начать новое сообщение.
+ * nextStep     — следующий шаг для отправки
+ * asNewMessage — true: начать новую цепочку; false: ответить в той же
  */
 final readonly class OutgoingStep implements OutgoingMessageInterface
 {
@@ -21,6 +22,9 @@ final readonly class OutgoingStep implements OutgoingMessageInterface
 
     public function jsonSerialize(): array
     {
-        return $this->nextStep->jsonSerialize();
+        return [
+            'step' => $this->nextStep->jsonSerialize(),
+            'asNewMessage' => $this->asNewMessage,
+        ];
     }
 }

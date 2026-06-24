@@ -18,7 +18,21 @@ interface ReadScenarioStepRepositoryInterface
         ScenarioStepExternalId $externalId,
     ): ScenarioStep|null;
 
+    /**
+     * Последний шаг любого активного сценария для данного адреса.
+     * Используется когда нет replyTo и scenarioName не указан.
+     */
     public function findLast(ProviderType $type, ChannelAddress $address): ScenarioStep|null;
+
+    /**
+     * Последний шаг конкретного сценария.
+     * Используется для поддержки параллельных сценариев у одного пользователя.
+     */
+    public function findLastByScenarioName(
+        ProviderType $type,
+        ChannelAddress $address,
+        string $scenarioName,
+    ): ScenarioStep|null;
 
     public function findById(ScenarioStepId $id): ScenarioStep|null;
 }

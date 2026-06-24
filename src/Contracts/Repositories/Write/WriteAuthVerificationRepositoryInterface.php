@@ -7,7 +7,6 @@ namespace EugeneErg\Auths\Contracts\Repositories\Write;
 use DateTimeImmutable;
 use EugeneErg\Auths\Entities\AuthVerification;
 use EugeneErg\Auths\ValueObjects\Action;
-use EugeneErg\Auths\ValueObjects\CallbackCode;
 use EugeneErg\Auths\ValueObjects\IssuedCode;
 use EugeneErg\Auths\ValueObjects\OAuthState;
 use EugeneErg\Auths\ValueObjects\ProviderType;
@@ -18,7 +17,7 @@ interface WriteAuthVerificationRepositoryInterface
 {
     public function create(
         ProviderType $type,
-        CallbackCode|IssuedCode|SentCode|OAuthState $code,
+        IssuedCode|SentCode|OAuthState $code,
         DateTimeImmutable $createdAt,
         DateTimeImmutable $expiresAt,
         Action $action,
@@ -26,7 +25,7 @@ interface WriteAuthVerificationRepositoryInterface
     ): AuthVerification;
 
     /**
-     * Помечает верификацию использованной. После этого повторный verify() должен падать.
+     * Помечает верификацию использованной. Повторный verify() бросит AlreadyUsed.
      */
     public function consume(AuthVerification $verification, DateTimeImmutable $consumedAt): void;
 }

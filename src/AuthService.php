@@ -9,8 +9,10 @@ use DateTimeImmutable;
 use EugeneErg\Auths\Contracts\Adapters\ProviderCallbackInterface;
 use EugeneErg\Auths\Contracts\Adapters\ProviderGetTokenInterface;
 use EugeneErg\Auths\Contracts\Adapters\ProviderInterface;
+use EugeneErg\Auths\Contracts\Adapters\ProviderMessagingInterface;
 use EugeneErg\Auths\Contracts\Adapters\ProviderPasswordValidatableInterface;
 use EugeneErg\Auths\Contracts\Adapters\ProviderRequestHandlerInterface;
+use EugeneErg\Auths\Contracts\Adapters\ProviderTokenExtractorInterface;
 use EugeneErg\Auths\Contracts\Adapters\ProviderVerificationInterface;
 use EugeneErg\Auths\Contracts\Repositories\Read\ReadAuthIdentityRepositoryInterface;
 use EugeneErg\Auths\Contracts\Repositories\Read\ReadAuthVerificationRepositoryInterface;
@@ -23,8 +25,10 @@ use EugeneErg\Auths\Contracts\Scenario\ScenarioInterface;
 use EugeneErg\Auths\Contracts\Scenario\ScenarioResultInterface;
 use EugeneErg\Auths\Contracts\Scenario\ScenarioStepInterface;
 use EugeneErg\Auths\Contracts\TransactionInterface;
+use EugeneErg\Auths\DataTransferObjects\CompleteResult;
 use EugeneErg\Auths\DataTransferObjects\IncomingMessage;
 use EugeneErg\Auths\DataTransferObjects\IssuedCodeOptions;
+use EugeneErg\Auths\DataTransferObjects\IssuedCodeResult;
 use EugeneErg\Auths\DataTransferObjects\OAuthCallbackOptions;
 use EugeneErg\Auths\DataTransferObjects\OAuthStateOptions;
 use EugeneErg\Auths\DataTransferObjects\OutgoingStep;
@@ -67,23 +71,23 @@ use Random\RandomException;
  * Поддерживаемые механизмы верификации:
  *
  * IssuedCode — сервис генерирует код и выдаёт его пользователю (deeplink, QR и т.д.).
- *   Пользователь отправляет этот код нам обратно (боту, на endpoint).
- *   Пример: Telegram deeplink /start TOKEN, кнопка в боте.
+ *   Пользователь отправляет код нам обратно (боту, на endpoint).
+ *   Возвращает IssuedCodeResult с токеном и deliverable (готовой строкой для передачи).
  *
  * SentCode — сервис отправляет код на контакт пользователя (SMS, email).
  *   Пользователь вводит код в форму.
- *   Пример: SMS OTP, email confirmation.
  *
- * OAuthState — сервис генерирует state и отдаёт его фронту.
+ * OAuthState — сервис генерирует state и отдаёт его фронту через OAuthStateOptions.
  *   Фронт строит URL провайдера с этим state.
  *   Провайдер возвращает code+state в callback.
  *   Сервис обменивает code на ChannelAddress через провайдер.
- *   Пример: Google OAuth, GitHub OAuth, VK OAuth.
+ *
+ * Password — синхронная проверка login+password через провайдер без токена.
  */
 readonly class AuthService
 {
     /**
-     * @param array<string, ProviderInterface> $providers
+     * @param array<string, ProviderInterface>         $providers
      * @param array<string, class-string<ScenarioInterface>> $scenarios
      *
      * @throws AuthScenarioNotFoundException
@@ -101,6 +105,7 @@ readonly class AuthService
         private WriteScenarioStepRepositoryInterface $writeScenarioStepRepository,
         private TransactionInterface $transaction,
         private string|null $defaultScenario = null,
+        private Action $registrationAction = new Action('registration'),
         private Action $authorizationAction = new Action('authorization'),
         private Action $removeAction = new Action('remove'),
         private Action $attachAction = new Action('attach'),
@@ -116,57 +121,57 @@ readonly class AuthService
     // IssuedCode: сервис выдаёт код пользователю
     // -------------------------------------------------------------------------
 
-    /**
-     * @throws AuthExceptionInterface
-     */
-    public function getIssuedTokenForAuthorization(IssuedCodeOptions $options): AuthVerificationToken
+    /** @throws AuthExceptionInterface */
+    public function getIssuedTokenForRegistration(IssuedCodeOptions $options): IssuedCodeResult
     {
-        return $this->createIssuedVerification($options, $this->authorizationAction)->token;
+        return $this->createIssuedVerification($options, $this->registrationAction);
     }
 
-    /**
-     * @throws AuthExceptionInterface
-     */
-    public function getIssuedTokenForAttach(IssuedCodeOptions $options, UserId $userId): AuthVerificationToken
+    /** @throws AuthExceptionInterface */
+    public function getIssuedTokenForAuthorization(IssuedCodeOptions $options): IssuedCodeResult
+    {
+        return $this->createIssuedVerification($options, $this->authorizationAction);
+    }
+
+    /** @throws AuthExceptionInterface */
+    public function getIssuedTokenForAttach(IssuedCodeOptions $options, UserId $userId): IssuedCodeResult
     {
         $this->assertCanAttach($userId, $options->type);
 
-        return $this->createIssuedVerification($options, $this->attachAction, $userId)->token;
+        return $this->createIssuedVerification($options, $this->attachAction, $userId);
     }
 
-    /**
-     * @throws AuthExceptionInterface
-     */
-    public function getIssuedTokenForRemove(IssuedCodeOptions $options, UserId $userId): AuthVerificationToken
+    /** @throws AuthExceptionInterface */
+    public function getIssuedTokenForRemove(IssuedCodeOptions $options, UserId $userId): IssuedCodeResult
     {
         $this->assertIdentityExists($userId, $options->type);
 
-        return $this->createIssuedVerification($options, $this->removeAction, $userId)->token;
+        return $this->createIssuedVerification($options, $this->removeAction, $userId);
     }
 
-    /**
-     * @throws AuthExceptionInterface
-     */
-    public function getIssuedTokenForAction(IssuedCodeOptions $options, UserId $userId, Action $action): AuthVerificationToken
+    /** @throws AuthExceptionInterface */
+    public function getIssuedTokenForAction(IssuedCodeOptions $options, UserId $userId, Action $action): IssuedCodeResult
     {
-        return $this->createIssuedVerification($options, $action, $userId)->token;
+        return $this->createIssuedVerification($options, $action, $userId);
     }
 
     // -------------------------------------------------------------------------
     // SentCode: сервис отправляет код пользователю
     // -------------------------------------------------------------------------
 
-    /**
-     * @throws AuthExceptionInterface
-     */
+    /** @throws AuthExceptionInterface */
+    public function sendVerificationCodeForRegistration(SentCodeOptions $options): AuthVerificationToken
+    {
+        return $this->createSentVerification($options, $this->registrationAction)->token;
+    }
+
+    /** @throws AuthExceptionInterface */
     public function sendVerificationCodeForAuthorization(SentCodeOptions $options): AuthVerificationToken
     {
         return $this->createSentVerification($options, $this->authorizationAction)->token;
     }
 
-    /**
-     * @throws AuthExceptionInterface
-     */
+    /** @throws AuthExceptionInterface */
     public function sendVerificationCodeForAttach(SentCodeOptions $options, UserId $userId): AuthVerificationToken
     {
         $this->assertCanAttach($userId, $options->type);
@@ -174,9 +179,7 @@ readonly class AuthService
         return $this->createSentVerification($options, $this->attachAction, $userId)->token;
     }
 
-    /**
-     * @throws AuthExceptionInterface
-     */
+    /** @throws AuthExceptionInterface */
     public function sendVerificationCodeForRemove(SentCodeOptions $options, UserId $userId): AuthVerificationToken
     {
         $this->assertIdentityExists($userId, $options->type);
@@ -184,9 +187,7 @@ readonly class AuthService
         return $this->createSentVerification($options, $this->removeAction, $userId)->token;
     }
 
-    /**
-     * @throws AuthExceptionInterface
-     */
+    /** @throws AuthExceptionInterface */
     public function sendVerificationCodeForAction(SentCodeOptions $options, UserId $userId, Action $action): AuthVerificationToken
     {
         return $this->createSentVerification($options, $action, $userId)->token;
@@ -197,19 +198,24 @@ readonly class AuthService
     // -------------------------------------------------------------------------
 
     /**
-     * Генерирует OAuth state и сохраняет верификацию.
-     * Возвращает state фронту — фронт сам строит URL к провайдеру.
+     * Генерирует OAuth state, сохраняет верификацию, возвращает state+token фронту.
+     * Фронт сам строит URL к провайдеру.
      *
      * @throws AuthExceptionInterface
+     * @throws RandomException
      */
+    public function generateOAuthStateForRegistration(ProviderType $type, DateInterval $ttl): OAuthStateOptions
+    {
+        return $this->createOAuthStateVerification($type, $ttl, $this->registrationAction);
+    }
+
+    /** @throws AuthExceptionInterface|RandomException */
     public function generateOAuthStateForAuthorization(ProviderType $type, DateInterval $ttl): OAuthStateOptions
     {
         return $this->createOAuthStateVerification($type, $ttl, $this->authorizationAction);
     }
 
-    /**
-     * @throws AuthExceptionInterface
-     */
+    /** @throws AuthExceptionInterface|RandomException */
     public function generateOAuthStateForAttach(ProviderType $type, DateInterval $ttl, UserId $userId): OAuthStateOptions
     {
         $this->assertCanAttach($userId, $type);
@@ -217,9 +223,7 @@ readonly class AuthService
         return $this->createOAuthStateVerification($type, $ttl, $this->attachAction, $userId);
     }
 
-    /**
-     * @throws AuthExceptionInterface
-     */
+    /** @throws AuthExceptionInterface|RandomException */
     public function generateOAuthStateForRemove(ProviderType $type, DateInterval $ttl, UserId $userId): OAuthStateOptions
     {
         $this->assertIdentityExists($userId, $type);
@@ -227,9 +231,7 @@ readonly class AuthService
         return $this->createOAuthStateVerification($type, $ttl, $this->removeAction, $userId);
     }
 
-    /**
-     * @throws AuthExceptionInterface
-     */
+    /** @throws AuthExceptionInterface|RandomException */
     public function generateOAuthStateForAction(ProviderType $type, DateInterval $ttl, UserId $userId, Action $action): OAuthStateOptions
     {
         return $this->createOAuthStateVerification($type, $ttl, $action, $userId);
@@ -241,11 +243,10 @@ readonly class AuthService
 
     /**
      * Верифицирует токен (IssuedCode или SentCode флоу).
-     * Пользователь вернул нам код — проверяем, помечаем использованным, возвращаем результат.
      *
      * @throws AuthExceptionInterface
      */
-    public function verifyToken(string $token): VerificationResult
+    public function verifyToken(AuthVerificationToken $token): VerificationResult
     {
         $verification = $this->readAuthVerificationRepository->findByToken($token);
 
@@ -257,15 +258,11 @@ readonly class AuthService
         $this->assertVerificationUsable($verification, $now);
 
         if ($verification->address === null) {
-            // OAuth verifications (OAuthState) have no address until callback — use verifyOAuthCallback() instead
             throw new AuthVerificationInvalidException('Use verifyOAuthCallback() for OAuth verifications.');
         }
 
         $address = $verification->address;
-        $identity = $this->readAuthIdentityRepository->find(
-            $verification->type,
-            $address,
-        );
+        $identity = $this->readAuthIdentityRepository->find($verification->type, $address);
 
         $this->transaction->transaction(function () use ($verification, $now): void {
             $this->writeAuthVerificationRepository->consume($verification, $now);
@@ -280,8 +277,7 @@ readonly class AuthService
     }
 
     /**
-     * Верифицирует OAuth callback (OAuthState флоу).
-     * Принимает code+state от провайдера, обменивает code на ChannelAddress через провайдер.
+     * Верифицирует OAuth callback: обменивает code на ChannelAddress через провайдер.
      *
      * @throws AuthExceptionInterface
      */
@@ -305,7 +301,6 @@ readonly class AuthService
             throw new AuthProviderUnsuitableException();
         }
 
-        // Провайдер обменивает code на адрес пользователя у себя (token endpoint + userinfo)
         $address = $provider->exchangeCode($options->code, $options->state, $options->redirect);
         $identity = $this->readAuthIdentityRepository->find($options->type, $address);
 
@@ -322,75 +317,11 @@ readonly class AuthService
     }
 
     // -------------------------------------------------------------------------
-    // Управление identity (результат успешной верификации)
-    // -------------------------------------------------------------------------
-
-    /**
-     * Привязывает внешний аккаунт к пользователю.
-     * Вызывается приложением после verifyToken/verifyOAuthCallback с action=registration|attach.
-     *
-     * @throws AuthExceptionInterface
-     */
-    public function attachIdentity(ProviderType $type, ChannelAddress $address, UserId $userId): void
-    {
-        $this->assertCanAttach($userId, $type);
-
-        $this->transaction->transaction(function () use ($type, $address, $userId): void {
-            $this->writeAuthIdentityRepository->create(
-                type: $type,
-                address: $address,
-                userId: $userId,
-                createdAt: new DateTimeImmutable(),
-            );
-        });
-    }
-
-    /**
-     * Отвязывает внешний аккаунт от пользователя.
-     * Вызывается после verifyToken/verifyOAuthCallback с action=remove.
-     *
-     * @throws AuthExceptionInterface
-     */
-    public function detachIdentity(ProviderType $type, ChannelAddress $address): void
-    {
-        $identity = $this->readAuthIdentityRepository->find($type, $address);
-
-        if ($identity === null) {
-            throw new AuthIdentityNotFoundException();
-        }
-
-        $this->transaction->transaction(function () use ($identity): void {
-            $this->writeAuthIdentityRepository->detach($identity, new DateTimeImmutable());
-        });
-    }
-
-    /**
-     * Планирует удаление аккаунта через указанный интервал (с оповещением через сценарий).
-     *
-     * @throws AuthExceptionInterface
-     */
-    public function scheduleIdentityDelete(ProviderType $type, ChannelAddress $address, DateInterval $delay): void
-    {
-        $identity = $this->readAuthIdentityRepository->find($type, $address);
-
-        if ($identity === null) {
-            throw new AuthIdentityNotFoundException();
-        }
-
-        $deleteAt = (new DateTimeImmutable())->add($delay);
-
-        $this->transaction->transaction(function () use ($identity, $deleteAt): void {
-            $this->writeAuthIdentityRepository->scheduleDelete($identity, $deleteAt);
-        });
-    }
-
-    // -------------------------------------------------------------------------
     // Password: классическая аутентификация login+password
     // -------------------------------------------------------------------------
 
     /**
-     * Проверяет логин и пароль через провайдер и возвращает результат верификации.
-     * Единственный флоу без предварительного создания токена — ответ синхронный.
+     * Синхронная проверка логина и пароля. Не требует предварительного создания токена.
      *
      * @throws AuthExceptionInterface
      */
@@ -420,11 +351,240 @@ readonly class AuthService
     }
 
     // -------------------------------------------------------------------------
+    // Управление identity
+    // -------------------------------------------------------------------------
+
+    /**
+     * Привязывает внешний аккаунт к пользователю.
+     *
+     * @throws AuthExceptionInterface
+     */
+    public function attachIdentity(ProviderType $type, ChannelAddress $address, UserId $userId): void
+    {
+        $this->assertCanAttach($userId, $type);
+
+        $this->transaction->transaction(function () use ($type, $address, $userId): void {
+            $this->writeAuthIdentityRepository->create(
+                type: $type,
+                address: $address,
+                userId: $userId,
+                createdAt: new DateTimeImmutable(),
+            );
+        });
+    }
+
+    /**
+     * Отвязывает внешний аккаунт от пользователя.
+     *
+     * @throws AuthExceptionInterface
+     */
+    public function detachIdentity(ProviderType $type, ChannelAddress $address): void
+    {
+        $identity = $this->readAuthIdentityRepository->find($type, $address);
+
+        if ($identity === null) {
+            throw new AuthIdentityNotFoundException();
+        }
+
+        $this->transaction->transaction(function () use ($identity): void {
+            $this->writeAuthIdentityRepository->detach($identity, new DateTimeImmutable());
+        });
+    }
+
+    /**
+     * Планирует удаление аккаунта через указанный интервал.
+     *
+     * @throws AuthExceptionInterface
+     */
+    public function scheduleIdentityDelete(ProviderType $type, ChannelAddress $address, DateInterval $delay): void
+    {
+        $identity = $this->readAuthIdentityRepository->find($type, $address);
+
+        if ($identity === null) {
+            throw new AuthIdentityNotFoundException();
+        }
+
+        $this->transaction->transaction(function () use ($identity, $delay): void {
+            $this->writeAuthIdentityRepository->scheduleDelete(
+                $identity,
+                (new DateTimeImmutable())->add($delay),
+            );
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // Complete: verify + действие в одном вызове
+    // -------------------------------------------------------------------------
+
+    /**
+     * Завершает регистрацию: верифицирует токен и создаёт привязку к новому userId.
+     *
+     * @throws AuthExceptionInterface
+     */
+    public function completeRegistration(
+        AuthVerificationToken $token,
+        UserId $userId,
+        ProviderType $type,
+    ): CompleteResult {
+        $result = $this->verifyToken($token);
+
+        if ($result->action->value !== $this->registrationAction->value) {
+            throw new AuthVerificationInvalidException('Expected registration action.');
+        }
+
+        $this->assertCanAttach($userId, $type);
+
+        $identity = $this->transaction->transaction(
+            fn () => $this->writeAuthIdentityRepository->create(
+                type: $type,
+                address: $result->address,
+                userId: $userId,
+                createdAt: new DateTimeImmutable(),
+            )
+        );
+
+        return new CompleteResult(userId: $userId, address: $result->address, identity: $identity);
+    }
+
+    /**
+     * Завершает привязку нового аккаунта к существующему пользователю.
+     *
+     * @throws AuthExceptionInterface
+     */
+    public function completeAttach(
+        AuthVerificationToken $token,
+        UserId $userId,
+        ProviderType $type,
+    ): CompleteResult {
+        $result = $this->verifyToken($token);
+
+        if ($result->action->value !== $this->attachAction->value) {
+            throw new AuthVerificationInvalidException('Expected attach action.');
+        }
+
+        $this->assertCanAttach($userId, $type);
+
+        $identity = $this->transaction->transaction(
+            fn () => $this->writeAuthIdentityRepository->create(
+                type: $type,
+                address: $result->address,
+                userId: $userId,
+                createdAt: new DateTimeImmutable(),
+            )
+        );
+
+        return new CompleteResult(userId: $userId, address: $result->address, identity: $identity);
+    }
+
+    /**
+     * Завершает отвязку аккаунта.
+     *
+     * @throws AuthExceptionInterface
+     */
+    public function completeDetach(AuthVerificationToken $token, ProviderType $type): void
+    {
+        $result = $this->verifyToken($token);
+
+        if ($result->action->value !== $this->removeAction->value) {
+            throw new AuthVerificationInvalidException('Expected remove action.');
+        }
+
+        $identity = $this->readAuthIdentityRepository->find($type, $result->address);
+
+        if ($identity === null) {
+            throw new AuthIdentityNotFoundException();
+        }
+
+        $this->transaction->transaction(
+            fn () => $this->writeAuthIdentityRepository->detach($identity, new DateTimeImmutable())
+        );
+    }
+
+    /**
+     * Завершает OAuth-регистрацию: обменивает callback и создаёт привязку.
+     *
+     * @throws AuthExceptionInterface
+     */
+    public function completeOAuthRegistration(OAuthCallbackOptions $options, UserId $userId): CompleteResult
+    {
+        $result = $this->verifyOAuthCallback($options);
+
+        if ($result->action->value !== $this->registrationAction->value) {
+            throw new AuthVerificationInvalidException('Expected registration action.');
+        }
+
+        $this->assertCanAttach($userId, $options->type);
+
+        $identity = $this->transaction->transaction(
+            fn () => $this->writeAuthIdentityRepository->create(
+                type: $options->type,
+                address: $result->address,
+                userId: $userId,
+                createdAt: new DateTimeImmutable(),
+            )
+        );
+
+        return new CompleteResult(userId: $userId, address: $result->address, identity: $identity);
+    }
+
+    /**
+     * Завершает OAuth-привязку нового аккаунта.
+     *
+     * @throws AuthExceptionInterface
+     */
+    public function completeOAuthAttach(OAuthCallbackOptions $options, UserId $userId): CompleteResult
+    {
+        $result = $this->verifyOAuthCallback($options);
+
+        if ($result->action->value !== $this->attachAction->value) {
+            throw new AuthVerificationInvalidException('Expected attach action.');
+        }
+
+        $this->assertCanAttach($userId, $options->type);
+
+        $identity = $this->transaction->transaction(
+            fn () => $this->writeAuthIdentityRepository->create(
+                type: $options->type,
+                address: $result->address,
+                userId: $userId,
+                createdAt: new DateTimeImmutable(),
+            )
+        );
+
+        return new CompleteResult(userId: $userId, address: $result->address, identity: $identity);
+    }
+
+    /**
+     * Завершает OAuth-отвязку аккаунта.
+     *
+     * @throws AuthExceptionInterface
+     */
+    public function completeOAuthDetach(OAuthCallbackOptions $options): void
+    {
+        $result = $this->verifyOAuthCallback($options);
+
+        if ($result->action->value !== $this->removeAction->value) {
+            throw new AuthVerificationInvalidException('Expected remove action.');
+        }
+
+        $identity = $this->readAuthIdentityRepository->find($options->type, $result->address);
+
+        if ($identity === null) {
+            throw new AuthIdentityNotFoundException();
+        }
+
+        $this->transaction->transaction(
+            fn () => $this->writeAuthIdentityRepository->detach($identity, new DateTimeImmutable())
+        );
+    }
+
+    // -------------------------------------------------------------------------
     // Сценарии: диалог с пользователем
     // -------------------------------------------------------------------------
 
     /**
      * Инициирует сценарий со стороны сервера (бот первым пишет пользователю).
+     * Сценарий получает IncomingMessage с заполненными type и address, но без частей.
      *
      * @throws AuthExceptionInterface
      * @throws ContainerExceptionInterface
@@ -438,17 +598,24 @@ readonly class AuthService
             throw new AuthScenarioNotFoundException();
         }
 
-        /** @var ScenarioInterface $scenario */
-        $scenario = $this->container->get($this->scenarios[$scenarioName]);
         $provider = $this->getProvider($type);
 
-        if (!$provider instanceof ProviderRequestHandlerInterface) {
+        if (!$provider instanceof ProviderMessagingInterface) {
             throw new AuthProviderUnsuitableException();
         }
 
-        // Запускаем сценарий без входящего сообщения — бот начинает первым
-        $result = $scenario->run(null);
         $createdAt = new DateTimeImmutable();
+
+        /** @var ScenarioInterface $activeScenario */
+        $activeScenario = $this->container->get($this->scenarios[$scenarioName]);
+
+        // Передаём контекст (тип канала, адрес) без частей сообщения.
+        // Сценарий может использовать $message->type и $message->address для персонализации.
+        $result = $activeScenario->run(new IncomingMessage(
+            type: $type,
+            address: $address,
+            createdAt: $createdAt,
+        ));
 
         if (!$result instanceof OutgoingStep) {
             throw new AuthScenarioNotFoundException('Scenario must return OutgoingStep on first run.');
@@ -493,13 +660,22 @@ readonly class AuthService
 
     /**
      * Обрабатывает входящий webhook от провайдера (Telegram, VK и т.д.).
-     * Находит нужный сценарий, прогоняет через него сообщение, сохраняет шаги.
+     *
+     * Если провайдер реализует ProviderTokenExtractorInterface и сообщение содержит
+     * валидный IssuedCode токен — возвращает VerificationResult вместо сценария.
+     * Если токен невалидный/истёкший — продолжает обработку как обычное сообщение.
+     *
+     * Параметр $scenarioName позволяет явно указать сценарий для поддержки
+     * параллельных диалогов у одного пользователя.
      *
      * @throws AuthExceptionInterface
      * @throws ContainerExceptionInterface
      */
-    public function handleWebhook(RequestInterface $request, ProviderType $type): ScenarioStepId|ScenarioId
-    {
+    public function handleWebhook(
+        RequestInterface $request,
+        ProviderType $type,
+        string|null $scenarioName = null,
+    ): ScenarioStepId|ScenarioId|VerificationResult {
         $provider = $this->getProvider($type);
 
         if (!$provider instanceof ProviderRequestHandlerInterface) {
@@ -507,6 +683,21 @@ readonly class AuthService
         }
 
         $response = $provider->handleRequest($request);
+
+        // Если провайдер умеет извлекать токены (IssuedCode флоу через бот),
+        // пробуем верифицировать. Если токен невалидный — продолжаем как сценарий.
+        if ($provider instanceof ProviderTokenExtractorInterface) {
+            $token = $provider->extractToken($response);
+
+            if ($token !== null) {
+                try {
+                    return $this->verifyToken($token);
+                } catch (AuthVerificationExpiredException|AuthVerificationAlreadyUsedException|AuthVerificationInvalidException) {
+                    // Токен не прошёл — обрабатываем как обычное сообщение сценария
+                }
+            }
+        }
+
         $targetStep = $response->replyTo === null
             ? null
             : $this->readScenarioStepRepository->findByMessage(
@@ -516,8 +707,19 @@ readonly class AuthService
             );
         $lastStep = $this->readScenarioStepRepository->findLast(type: $type, address: $response->address);
 
+        if ($scenarioName !== null) {
+            $namedStep = $this->readScenarioStepRepository->findLastByScenarioName(
+                $type,
+                $response->address,
+                $scenarioName,
+            );
+        } else {
+            $namedStep = null;
+        }
+
         [$name, $current] = match (true) {
-            $lastStep !== null => [$lastStep->scenarioName, $lastStep],
+            $namedStep !== null  => [$namedStep->scenarioName, $namedStep],
+            $lastStep !== null   => [$lastStep->scenarioName, $lastStep],
             $targetStep !== null => [$targetStep->scenarioName, $targetStep],
             $this->defaultScenario !== null => [$this->defaultScenario, null],
             default => throw new AuthScenarioNotFoundException(),
@@ -525,13 +727,14 @@ readonly class AuthService
 
         $createdAt = new DateTimeImmutable();
 
-        /** @var ScenarioInterface $scenario */
-        $scenario = $this->container->get($this->scenarios[$name]);
+        /** @var ScenarioInterface $activeScenario */
+        $activeScenario = $this->container->get($this->scenarios[$name]);
         $scenarios = [];
 
         do {
-            $result = $scenario->run(new IncomingMessage(
+            $result = $activeScenario->run(new IncomingMessage(
                 type: $type,
+                address: $response->address,
                 createdAt: $response->processedAt,
                 parts: $response->parts,
                 attachments: $response->attachments,
@@ -549,12 +752,12 @@ readonly class AuthService
 
                 $current = $scenarios[$id];
 
-                /** @var ScenarioInterface $scenario */
-                $scenario = $this->container->get($this->scenarios[$current->scenarioName]);
+                /** @var ScenarioInterface $activeScenario */
+                $activeScenario = $this->container->get($this->scenarios[$current->scenarioName]);
                 $scenarios = [];
             } elseif ($result instanceof ScenarioInterface) {
                 $current = null;
-                $scenario = $result;
+                $activeScenario = $result;
                 $scenarios = [];
             }
         } while ($result instanceof Scenario || $result instanceof ScenarioInterface);
@@ -574,6 +777,7 @@ readonly class AuthService
         return $this->transaction->transaction(function () use (
             $current,
             $result,
+            $name,
             $type,
             $response,
             $authIdentity,
@@ -581,15 +785,16 @@ readonly class AuthService
             $targetStep,
             $newStepExternalId,
         ): ScenarioStepId|ScenarioId {
-            $scenarioResult = $result === null
-                ? null
-                : new ScenarioResult(
-                    name: $this->getScenarioResultName($this->defaultScenario, $result),
+            $scenarioResult = $result instanceof ScenarioResultInterface
+                ? new ScenarioResult(
+                    name: $this->getScenarioResultName($name, $result),
                     data: $result->jsonSerialize(),
-                );
+                )
+                : null;
+
             $scenario = $current === null
                 ? $this->writeScenarioRepository->create(
-                    name: $this->defaultScenario,
+                    name: $name,
                     type: $type,
                     address: $response->address,
                     createdAt: $createdAt,
@@ -601,6 +806,7 @@ readonly class AuthService
                     result: $scenarioResult,
                     userId: $current->userId ?? $authIdentity->userId ?? null,
                 );
+
             $userStep = $this->writeScenarioStepRepository->create(
                 scenarioId: $scenario->id,
                 externalId: $response->id,
@@ -636,9 +842,7 @@ readonly class AuthService
     // Приватные методы
     // -------------------------------------------------------------------------
 
-    /**
-     * @throws AuthProviderNotFoundException
-     */
+    /** @throws AuthProviderNotFoundException */
     private function getProvider(ProviderType $type): ProviderInterface
     {
         if (!isset($this->providers[$type->value])) {
@@ -648,9 +852,7 @@ readonly class AuthService
         return $this->providers[$type->value];
     }
 
-    /**
-     * @throws AuthTypeAlreadyExistsException
-     */
+    /** @throws AuthTypeAlreadyExistsException */
     private function assertCanAttach(UserId $userId, ProviderType $type): void
     {
         if ($this->oneAccountPerProvider && $this->readAuthIdentityRepository->exists($userId, $type)) {
@@ -658,9 +860,7 @@ readonly class AuthService
         }
     }
 
-    /**
-     * @throws AuthTypeAlreadyExistsException
-     */
+    /** @throws AuthTypeAlreadyExistsException */
     private function assertIdentityExists(UserId $userId, ProviderType $type): void
     {
         if (!$this->readAuthIdentityRepository->exists($userId, $type)) {
@@ -668,10 +868,7 @@ readonly class AuthService
         }
     }
 
-    /**
-     * @throws AuthVerificationAlreadyUsedException
-     * @throws AuthVerificationExpiredException
-     */
+    /** @throws AuthVerificationExpiredException|AuthVerificationAlreadyUsedException */
     private function assertVerificationUsable(AuthVerification $verification, DateTimeImmutable $now): void
     {
         if ($verification->isExpired($now)) {
@@ -683,32 +880,33 @@ readonly class AuthService
         }
     }
 
-    /**
-     * @throws AuthExceptionInterface
-     */
+    /** @throws AuthExceptionInterface */
     private function createIssuedVerification(
         IssuedCodeOptions $options,
         Action $action,
         UserId|null $userId = null,
-    ): AuthVerification {
+    ): IssuedCodeResult {
         $provider = $this->getProvider($options->type);
 
         if (!$provider instanceof ProviderGetTokenInterface) {
             throw new AuthProviderUnsuitableException();
         }
 
-        return $this->createVerification(
+        $verification = $this->createVerification(
             type: $options->type,
             code: $options->code,
             action: $action,
             ttl: $options->ttl,
             userId: $userId,
         );
+
+        return new IssuedCodeResult(
+            token: $verification->token,
+            deliverable: $provider->buildDeliverable($options->code),
+        );
     }
 
-    /**
-     * @throws AuthExceptionInterface
-     */
+    /** @throws AuthExceptionInterface */
     private function createSentVerification(
         SentCodeOptions $options,
         Action $action,
@@ -743,10 +941,7 @@ readonly class AuthService
         );
     }
 
-    /**
-     * @throws AuthExceptionInterface
-     * @throws RandomException
-     */
+    /** @throws AuthExceptionInterface|RandomException */
     private function createOAuthStateVerification(
         ProviderType $type,
         DateInterval $ttl,
@@ -760,7 +955,7 @@ readonly class AuthService
         }
 
         $state = new OAuthState(bin2hex(random_bytes(32)));
-        $result = $this->createVerification(
+        $verification = $this->createVerification(
             type: $type,
             code: $state,
             action: $action,
@@ -768,7 +963,7 @@ readonly class AuthService
             userId: $userId,
         );
 
-        return new OAuthStateOptions($state, $result->token);
+        return new OAuthStateOptions($state, $verification->token);
     }
 
     private function createVerification(
@@ -790,18 +985,14 @@ readonly class AuthService
         );
     }
 
-    /**
-     * @throws AuthScenarioNotFoundException
-     * @throws AuthScenarioResultNotFoundException
-     */
-    private function makeResult(string $scenarioName, ScenarioResult|null $result): ScenarioResultInterface
+    /** @throws AuthScenarioNotFoundException|AuthScenarioResultNotFoundException */
+    private function makeResult(string $scenarioName, ScenarioResult $result): ScenarioResultInterface
     {
         if (!isset($this->scenarios[$scenarioName])) {
             throw new AuthScenarioNotFoundException();
         }
 
-        $scenarioClass = $this->scenarios[$scenarioName];
-        $results = $scenarioClass::getResults();
+        $results = $this->scenarios[$scenarioName]::getResults();
 
         if (!isset($results[$result->name])) {
             throw new AuthScenarioResultNotFoundException();
@@ -810,18 +1001,14 @@ readonly class AuthService
         return ($results[$result->name])::fromArray($result->data);
     }
 
-    /**
-     * @throws AuthScenarioNotFoundException
-     * @throws AuthScenarioStepNotFoundException
-     */
+    /** @throws AuthScenarioNotFoundException|AuthScenarioStepNotFoundException */
     private function makeStep(string $scenarioName, string $stepName, array $data): ScenarioStepInterface
     {
         if (!isset($this->scenarios[$scenarioName])) {
             throw new AuthScenarioNotFoundException();
         }
 
-        $scenarioClass = $this->scenarios[$scenarioName];
-        $steps = $scenarioClass::getSteps();
+        $steps = $this->scenarios[$scenarioName]::getSteps();
 
         if (!isset($steps[$stepName])) {
             throw new AuthScenarioStepNotFoundException();
@@ -831,9 +1018,7 @@ readonly class AuthService
     }
 
     /**
-     * @throws AuthScenarioNotFoundException
-     * @throws AuthScenarioResultNotFoundException
-     * @throws AuthScenarioStepNotFoundException
+     * @throws AuthScenarioNotFoundException|AuthScenarioResultNotFoundException|AuthScenarioStepNotFoundException
      */
     private function makeScenario(ScenarioStep $targetStep, ScenarioStep|null $current, array &$scenarios): Scenario
     {
@@ -843,7 +1028,7 @@ readonly class AuthService
             step: $targetStep->stepName === null
                 ? null
                 : $this->makeStep($targetStep->scenarioName, $targetStep->stepName, $targetStep->data),
-            scenario: $targetStep->replyToId === null
+            parent: $targetStep->replyToId === null
                 ? null
                 : function () use ($targetStep, $current, $scenarios): Scenario {
                     $targetStep = $this->readScenarioStepRepository->findById($targetStep->replyToId);
@@ -863,10 +1048,7 @@ readonly class AuthService
         return $result;
     }
 
-    /**
-     * @throws AuthScenarioNotFoundException
-     * @throws AuthScenarioResultNotFoundException
-     */
+    /** @throws AuthScenarioNotFoundException|AuthScenarioResultNotFoundException */
     private function getScenarioResultName(string $scenarioName, ScenarioResultInterface $result): string
     {
         if (!isset($this->scenarios[$scenarioName])) {
@@ -882,10 +1064,7 @@ readonly class AuthService
         return (string) $resultName;
     }
 
-    /**
-     * @throws AuthScenarioNotFoundException
-     * @throws AuthScenarioStepNotFoundException
-     */
+    /** @throws AuthScenarioNotFoundException|AuthScenarioStepNotFoundException */
     private function getStepName(string $scenarioName, ScenarioStepInterface $step): string
     {
         if (!isset($this->scenarios[$scenarioName])) {
