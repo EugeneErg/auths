@@ -16,6 +16,7 @@ final readonly class AuthIdentity
         public ChannelAddress $address,
         public UserId $userId,
         public DateTimeImmutable $createdAt,
+        public bool $isPrimary = false,
         public DateTimeImmutable|null $disconnectedAt = null,
         public DateTimeImmutable|null $deleteAt = null,
     ) {

@@ -4,26 +4,30 @@ declare(strict_types=1);
 
 namespace EugeneErg\Auths\Contracts\Adapters;
 
-use EugeneErg\Auths\Contracts\Scenario\OutgoingMessageInterface;
+use EugeneErg\Auths\Contracts\Scenario\ScenarioStepInterface;
+use EugeneErg\Auths\ValueObjects\Action;
 use EugeneErg\Auths\ValueObjects\ChannelAddress;
 use EugeneErg\Auths\ValueObjects\ScenarioStepExternalId;
 
 /**
- * Провайдер, способный отправлять сообщения пользователю.
- * Используется как для сценариев (следующий шаг), так и для верификации (код подтверждения).
+ * Провайдер, способный отправлять шаги сценария пользователю.
+ * Адаптер рендерит шаг в сообщение по классу шага.
+ * Action передаётся для контекста — адаптер сам решает использовать ли его в тексте.
  */
 interface ProviderMessagingInterface extends ProviderInterface
 {
     /**
-     * @param ChannelAddress $to Адрес получателя в канале
-     * @param OutgoingMessageInterface $message Сообщение для отправки
-     * @param string|null $replyTo Внешний ID сообщения, на которое отвечаем
+     * @param ChannelAddress        $to      Адрес получателя
+     * @param ScenarioStepInterface $step    Шаг для рендеринга
+     * @param Action                $action  Контекст сценария ("вы подтверждаете перевод")
+     * @param string|null           $replyTo Внешний ID сообщения, на которое отвечаем
      *
      * @return ScenarioStepExternalId Внешний ID отправленного сообщения
      */
-    public function sendMessage(
+    public function sendStep(
         ChannelAddress $to,
-        OutgoingMessageInterface $message,
+        ScenarioStepInterface $step,
+        Action $action,
         string|null $replyTo = null,
     ): ScenarioStepExternalId;
 }

@@ -9,6 +9,12 @@ use EugeneErg\Auths\Contracts\Scenario\MessagePartInterface;
 use EugeneErg\Auths\ValueObjects\ChannelAddress;
 use EugeneErg\Auths\ValueObjects\ScenarioStepExternalId;
 
+/**
+ * Результат обработки входящего webhook-запроса провайдером.
+ * verificationCode — если провайдер распознал в сообщении код верификации
+ *                    (например пользователь прислал OTP или команду /start TOKEN),
+ *                    сервис проверит его против активной AuthVerification до передачи в сценарий.
+ */
 final readonly class Response
 {
     /**
@@ -22,6 +28,7 @@ final readonly class Response
         public ScenarioStepExternalId|null $replyTo = null,
         public array $parts = [],
         public array $attachments = [],
+        public string|null $verificationCode = null,
     ) {
     }
 }

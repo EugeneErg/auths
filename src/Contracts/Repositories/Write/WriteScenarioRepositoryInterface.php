@@ -7,6 +7,7 @@ namespace EugeneErg\Auths\Contracts\Repositories\Write;
 use DateTimeInterface;
 use EugeneErg\Auths\DataTransferObjects\ScenarioResult;
 use EugeneErg\Auths\Entities\Scenario;
+use EugeneErg\Auths\ValueObjects\Action;
 use EugeneErg\Auths\ValueObjects\ChannelAddress;
 use EugeneErg\Auths\ValueObjects\ProviderType;
 use EugeneErg\Auths\ValueObjects\UserId;
@@ -18,6 +19,7 @@ interface WriteScenarioRepositoryInterface
         ProviderType $type,
         ChannelAddress $address,
         DateTimeInterface $createdAt,
+        Action $action,
         UserId|null $userId = null,
         ScenarioResult|null $result = null,
     ): Scenario;

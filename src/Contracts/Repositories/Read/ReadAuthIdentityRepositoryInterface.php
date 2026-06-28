@@ -16,8 +16,13 @@ interface ReadAuthIdentityRepositoryInterface
     public function find(ProviderType $type, ChannelAddress $address): AuthIdentity|null;
 
     /**
+     * Основной аккаунт пользователя для провайдера (isPrimary=true),
+     * или последний привязанный если основной не задан.
+     */
+    public function findPrimary(UserId $userId, ProviderType $type): AuthIdentity|null;
+
+    /**
      * Все привязанные аккаунты пользователя.
-     * Используется для отображения списка провайдеров и массового detach.
      *
      * @return AuthIdentity[]
      */

@@ -7,16 +7,15 @@ namespace EugeneErg\Auths\DataTransferObjects;
 use EugeneErg\Auths\ValueObjects\AuthVerificationToken;
 
 /**
- * Результат инициации IssuedCode флоу.
- * token       — токен верификации (используется в verifyToken)
- * deliverable — строка для передачи пользователю: deeplink, текст, QR-данные.
- *               Формат определяет провайдер через buildDeliverable().
+ * Результат withIssuedCode().
+ * token — внутренний токен верификации
+ * code  — строка кода для передачи пользователю (в deeplink, QR и т.д.)
  */
 final readonly class IssuedCodeResult
 {
     public function __construct(
         public AuthVerificationToken $token,
-        public string $deliverable,
+        public string $code,
     ) {
     }
 }

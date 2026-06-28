@@ -13,13 +13,7 @@ use const E_USER_WARNING;
 /**
  * Контекст сценария, передаваемый через IncomingMessage::$responseTo.
  *
- * name    — имя сценария
- * current — true если это тот же сценарий, что активен сейчас
- * step    — шаг, на который пришёл ответ (восстановлен из БД)
- * result  — финальный результат, если сценарий уже завершён
- * parent  — родительский сценарий (ленивая загрузка) для цепочек
- *
- * @property-read Scenario|null $parent
+ * @property-read Scenario|null $parent Родительский сценарий (ленивая загрузка)
  */
 final readonly class Scenario
 {

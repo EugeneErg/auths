@@ -8,8 +8,8 @@ use EugeneErg\Auths\DataTransferObjects\Response;
 use Psr\Http\Message\RequestInterface;
 
 /**
- * Провайдер, способный принимать входящие webhook-запросы (Telegram bot, VK и т.д.)
- * и отправлять ответные сообщения через единый ProviderMessagingInterface.
+ * Провайдер, способный принимать входящие webhook-запросы.
+ * Реализует оба интерфейса: принимает запросы И отправляет ответы.
  */
 interface ProviderRequestHandlerInterface extends ProviderMessagingInterface
 {

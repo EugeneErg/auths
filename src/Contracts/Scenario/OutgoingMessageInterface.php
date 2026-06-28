@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace EugeneErg\Auths\Contracts\Scenario;
 
-use JsonSerializable;
-
 /**
- * Исходящее сообщение — общий интерфейс для шагов сценария и сообщений верификации.
- * Позволяет провайдеру отправлять оба типа единым способом.
+ * @deprecated Используйте ScenarioStepInterface напрямую.
+ *             sendStep() принимает ScenarioStepInterface, OutgoingMessageInterface больше не нужен.
  */
-interface OutgoingMessageInterface extends JsonSerializable
+interface OutgoingMessageInterface
 {
-    public function jsonSerialize(): array;
 }
