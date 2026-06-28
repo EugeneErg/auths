@@ -11,72 +11,33 @@ use EugeneErg\Auths\ValueObjects\CodeType;
 use EugeneErg\Auths\ValueObjects\UserId;
 
 /**
- * Стартер для авторизованного пользователя.
- * Action явный — attach, remove, confirm_payment и т.д.
- *
- * Методы возвращают ScenarioContext — передаётся в AuthService::startScenario().
+ * Стартер для авторизованного пользователя в AuthService.
+ * Action задаётся при создании (через withUser), зашит в вызываемом методе AuthService.
  */
 final readonly class AuthenticatedStarter
 {
     public function __construct(
         private UserId $userId,
-        private Action $action,
     ) {
     }
 
-    /**
-     * Мы отправим код на адрес.
-     * Адрес опционален — если null, сервис возьмёт из primary identity пользователя.
-     */
-    public function withSentCode(ChannelAddress|null $address, string $code, DateInterval $ttl): ScenarioContext
+    public function withSentCode(ChannelAddress|null $address, string $code, DateInterval $ttl): AuthContext
     {
-        return new ScenarioContext(
-            action: $this->action,
-            userId: $this->userId,
-            address: $address,
-            codeType: CodeType::Sent,
-            code: $code,
-            ttl: $ttl,
-        );
+        return new AuthContext(userId: $this->userId, address: $address, codeType: CodeType::Sent, code: $code, ttl: $ttl);
     }
 
-    /**
-     * Мы выдаём код пользователю (deeplink, QR).
-     */
-    public function withIssuedCode(string $code, DateInterval $ttl): ScenarioContext
+    public function withIssuedCode(string $code, DateInterval $ttl): AuthContext
     {
-        return new ScenarioContext(
-            action: $this->action,
-            userId: $this->userId,
-            codeType: CodeType::Issued,
-            code: $code,
-            ttl: $ttl,
-        );
+        return new AuthContext(userId: $this->userId, codeType: CodeType::Issued, code: $code, ttl: $ttl);
     }
 
-    /**
-     * OAuth: генерируем state, фронт строит URL к провайдеру.
-     */
-    public function withOAuth(DateInterval $ttl): ScenarioContext
+    public function withOAuth(DateInterval $ttl): AuthContext
     {
-        return new ScenarioContext(
-            action: $this->action,
-            userId: $this->userId,
-            codeType: CodeType::OAuthState,
-            ttl: $ttl,
-        );
+        return new AuthContext(userId: $this->userId, codeType: CodeType::OAuthState, ttl: $ttl);
     }
 
-    /**
-     * Просто отправляем сценарий без верификации — уведомления, опросы, онбординг.
-     * Адрес опционален — если null, сервис возьмёт из primary identity пользователя.
-     */
-    public function send(ChannelAddress|null $address = null): ScenarioContext
+    public function send(ChannelAddress|null $address = null): AuthContext
     {
-        return new ScenarioContext(
-            action: $this->action,
-            userId: $this->userId,
-            address: $address,
-        );
+        return new AuthContext(userId: $this->userId, address: $address);
     }
 }
