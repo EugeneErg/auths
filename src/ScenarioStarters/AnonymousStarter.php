@@ -7,6 +7,7 @@ namespace EugeneErg\Auths\ScenarioStarters;
 use DateInterval;
 use DateTimeImmutable;
 use EugeneErg\Auths\Contracts\Adapters\ProviderCallbackInterface;
+use EugeneErg\Auths\Contracts\Adapters\ProviderInterface;
 use EugeneErg\Auths\Contracts\Adapters\ProviderMessagingInterface;
 use EugeneErg\Auths\Contracts\Adapters\ProviderRequestHandlerInterface;
 use EugeneErg\Auths\Contracts\Repositories\Write\WriteAuthVerificationRepositoryInterface;
@@ -42,7 +43,7 @@ final class AnonymousStarter
         private readonly ScenarioInterface $scenario,
         private readonly ProviderType $type,
         private readonly Action $authAction,
-        private readonly ProviderMessagingInterface $provider,
+        private readonly ProviderInterface $provider,
         private readonly WriteAuthVerificationRepositoryInterface $writeAuthVerificationRepository,
         private readonly WriteScenarioRepositoryInterface $writeScenarioRepository,
         private readonly WriteScenarioStepRepositoryInterface $writeScenarioStepRepository,
@@ -121,7 +122,7 @@ final class AnonymousStarter
      */
     private function run(ChannelAddress $address, callable $saveVerification): AuthVerificationToken
     {
-        if (!$this->provider instanceof ProviderRequestHandlerInterface) {
+        if (!$this->provider instanceof ProviderMessagingInterface) {
             throw new AuthProviderUnsuitableException();
         }
 

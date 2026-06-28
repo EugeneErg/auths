@@ -7,8 +7,10 @@ namespace EugeneErg\Auths\ScenarioStarters;
 use DateInterval;
 use DateTimeImmutable;
 use EugeneErg\Auths\Contracts\Adapters\ProviderCallbackInterface;
+use EugeneErg\Auths\Contracts\Adapters\ProviderInterface;
 use EugeneErg\Auths\Contracts\Adapters\ProviderMessagingInterface;
 use EugeneErg\Auths\Contracts\Adapters\ProviderRequestHandlerInterface;
+use EugeneErg\Auths\Contracts\Repositories\Read\ReadAuthIdentityRepositoryInterface;
 use EugeneErg\Auths\Contracts\Repositories\Write\WriteAuthVerificationRepositoryInterface;
 use EugeneErg\Auths\Contracts\Repositories\Write\WriteScenarioRepositoryInterface;
 use EugeneErg\Auths\Contracts\Repositories\Write\WriteScenarioStepRepositoryInterface;
@@ -29,6 +31,8 @@ use EugeneErg\Auths\ValueObjects\IssuedCode;
 use EugeneErg\Auths\ValueObjects\OAuthState;
 use EugeneErg\Auths\ValueObjects\ProviderType;
 use EugeneErg\Auths\ValueObjects\SentCode;
+use EugeneErg\Auths\Exceptions\AuthExceptionInterface;
+use EugeneErg\Auths\ValueObjects\ScenarioStepId;
 use EugeneErg\Auths\ValueObjects\UserId;
 use Random\RandomException;
 
@@ -44,13 +48,14 @@ final class AuthenticatedStarter
         private readonly ProviderType $type,
         private readonly Action $action,
         private readonly UserId $userId,
-        private readonly ProviderMessagingInterface $provider,
+        private readonly ProviderInterface $provider,
+        private readonly ReadAuthIdentityRepositoryInterface $readAuthIdentityRepository,
         private readonly WriteAuthVerificationRepositoryInterface $writeAuthVerificationRepository,
         private readonly WriteScenarioRepositoryInterface $writeScenarioRepository,
         private readonly WriteScenarioStepRepositoryInterface $writeScenarioStepRepository,
         private readonly TransactionInterface $transaction,
         private readonly string $scenarioName,
-        private readonly ChannelAddress|null $identityAddress = null,
+
     ) {
     }
 
@@ -61,15 +66,15 @@ final class AuthenticatedStarter
      */
     public function withSentCode(ChannelAddress|null $address = null): AuthVerificationToken
     {
-        $resolved = $address ?? $this->identityAddress;
+        $resolved = $address ?? $this->resolveAddress();
 
         if ($resolved === null) {
             throw new AuthVerificationInvalidException(
-                'Address required for withSentCode: provide explicitly or ensure user has identity for this provider.'
+                'Address required: provide explicitly or ensure user has a primary identity for this provider.'
             );
         }
 
-        if (!$this->provider instanceof ProviderRequestHandlerInterface) {
+        if (!$this->provider instanceof ProviderMessagingInterface) {
             throw new AuthProviderUnsuitableException();
         }
 
@@ -131,6 +136,69 @@ final class AuthenticatedStarter
         }
 
         return $token;
+    }
+
+
+    /**
+     * Запускает сценарий и отправляет первый шаг без верификации.
+     * Используется для уведомлений, опросов, онбординга — когда код не нужен.
+     * Адрес опционален — берётся из основного identity пользователя для этого провайдера.
+     *
+     * @throws AuthExceptionInterface
+     */
+    public function send(ChannelAddress|null $address = null): ScenarioStepId
+    {
+        $resolved = $address ?? $this->resolveAddress();
+
+        if ($resolved === null) {
+            throw new AuthVerificationInvalidException(
+                'Address required: provide explicitly or ensure user has a primary identity for this provider.'
+            );
+        }
+
+        if (!$this->provider instanceof ProviderMessagingInterface) {
+            throw new AuthProviderUnsuitableException();
+        }
+
+        $createdAt = new DateTimeImmutable();
+        $result = $this->scenario->run(new IncomingMessage(
+            type: $this->type,
+            address: $resolved,
+            createdAt: $createdAt,
+        ));
+
+        if (!$result instanceof OutgoingStep) {
+            throw new AuthScenarioNotFoundException('Scenario must return OutgoingStep on first run.');
+        }
+
+        $externalId = $this->provider->sendStep(
+            to: $resolved,
+            step: $result->nextStep,
+            action: $this->action,
+            replyTo: null,
+        );
+
+        return $this->transaction->transaction(function () use ($resolved, $createdAt, $result, $externalId): ScenarioStepId {
+            $scenario = $this->writeScenarioRepository->create(
+                name: $this->scenarioName,
+                type: $this->type,
+                address: $resolved,
+                createdAt: $createdAt,
+                action: $this->action,
+                userId: $this->userId,
+            );
+
+            return $this->writeScenarioStepRepository->create(
+                scenarioId: $scenario->id,
+                externalId: $externalId,
+                createdAt: $createdAt,
+                processedAt: $createdAt,
+                name: $this->getStepName($result->nextStep),
+                data: $result->nextStep->jsonSerialize(),
+                replyToExternalId: null,
+                replyToId: null,
+            )->id;
+        });
     }
 
     /**
@@ -196,6 +264,13 @@ final class AuthenticatedStarter
         );
 
         return new OAuthStateOptions($state, $verification->token);
+    }
+
+
+    private function resolveAddress(): ChannelAddress|null
+    {
+        $identity = $this->readAuthIdentityRepository->findPrimary($this->userId, $this->type);
+        return $identity?->address;
     }
 
     private function getStepName(mixed $step): string

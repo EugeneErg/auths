@@ -7,7 +7,6 @@ namespace EugeneErg\Auths;
 use DateTimeImmutable;
 use EugeneErg\Auths\Contracts\Adapters\ProviderCallbackInterface;
 use EugeneErg\Auths\Contracts\Adapters\ProviderInterface;
-use EugeneErg\Auths\Contracts\Adapters\ProviderMessagingInterface;
 use EugeneErg\Auths\Contracts\Adapters\ProviderPasswordValidatableInterface;
 use EugeneErg\Auths\Contracts\Adapters\ProviderRequestHandlerInterface;
 use EugeneErg\Auths\Contracts\Repositories\Read\ReadAuthIdentityRepositoryInterface;
@@ -118,10 +117,6 @@ readonly class AuthService
     {
         $scenarioName = $this->getScenarioName($scenario);
         $provider = $this->getProvider($type);
-
-        if (!$provider instanceof ProviderMessagingInterface) {
-            throw new AuthProviderUnsuitableException();
-        }
 
         return new AnonymousStarter(
             scenario: $scenario,
