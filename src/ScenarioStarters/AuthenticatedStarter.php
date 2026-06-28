@@ -5,278 +5,78 @@ declare(strict_types=1);
 namespace EugeneErg\Auths\ScenarioStarters;
 
 use DateInterval;
-use DateTimeImmutable;
-use EugeneErg\Auths\Contracts\Adapters\ProviderCallbackInterface;
-use EugeneErg\Auths\Contracts\Adapters\ProviderInterface;
-use EugeneErg\Auths\Contracts\Adapters\ProviderMessagingInterface;
-use EugeneErg\Auths\Contracts\Adapters\ProviderRequestHandlerInterface;
-use EugeneErg\Auths\Contracts\Repositories\Read\ReadAuthIdentityRepositoryInterface;
-use EugeneErg\Auths\Contracts\Repositories\Write\WriteAuthVerificationRepositoryInterface;
-use EugeneErg\Auths\Contracts\Repositories\Write\WriteScenarioRepositoryInterface;
-use EugeneErg\Auths\Contracts\Repositories\Write\WriteScenarioStepRepositoryInterface;
-use EugeneErg\Auths\Contracts\Scenario\HasVerificationCode;
-use EugeneErg\Auths\Contracts\Scenario\ScenarioInterface;
-use EugeneErg\Auths\Contracts\TransactionInterface;
-use EugeneErg\Auths\DataTransferObjects\IncomingMessage;
-use EugeneErg\Auths\DataTransferObjects\IssuedCodeResult;
-use EugeneErg\Auths\DataTransferObjects\OAuthStateOptions;
-use EugeneErg\Auths\DataTransferObjects\OutgoingStep;
-use EugeneErg\Auths\Exceptions\AuthProviderUnsuitableException;
-use EugeneErg\Auths\Exceptions\AuthScenarioNotFoundException;
-use EugeneErg\Auths\Exceptions\AuthVerificationInvalidException;
 use EugeneErg\Auths\ValueObjects\Action;
-use EugeneErg\Auths\ValueObjects\AuthVerificationToken;
 use EugeneErg\Auths\ValueObjects\ChannelAddress;
-use EugeneErg\Auths\ValueObjects\IssuedCode;
-use EugeneErg\Auths\ValueObjects\OAuthState;
-use EugeneErg\Auths\ValueObjects\ProviderType;
-use EugeneErg\Auths\ValueObjects\SentCode;
-use EugeneErg\Auths\Exceptions\AuthExceptionInterface;
-use EugeneErg\Auths\ValueObjects\ScenarioStepId;
+use EugeneErg\Auths\ValueObjects\CodeType;
 use EugeneErg\Auths\ValueObjects\UserId;
-use Random\RandomException;
 
 /**
- * Builder для запуска сценария от имени авторизованного пользователя.
+ * Стартер для авторизованного пользователя.
  * Action явный — attach, remove, confirm_payment и т.д.
- * Адрес для withSentCode опционален — берётся из identity если не указан.
+ *
+ * Методы возвращают ScenarioContext — передаётся в AuthService::startScenario().
  */
-final class AuthenticatedStarter
+final readonly class AuthenticatedStarter
 {
     public function __construct(
-        private readonly ScenarioInterface $scenario,
-        private readonly ProviderType $type,
-        private readonly Action $action,
-        private readonly UserId $userId,
-        private readonly ProviderInterface $provider,
-        private readonly ReadAuthIdentityRepositoryInterface $readAuthIdentityRepository,
-        private readonly WriteAuthVerificationRepositoryInterface $writeAuthVerificationRepository,
-        private readonly WriteScenarioRepositoryInterface $writeScenarioRepository,
-        private readonly WriteScenarioStepRepositoryInterface $writeScenarioStepRepository,
-        private readonly TransactionInterface $transaction,
-        private readonly string $scenarioName,
-
+        private UserId $userId,
+        private Action $action,
     ) {
     }
 
     /**
-     * @throws AuthProviderUnsuitableException
-     * @throws AuthScenarioNotFoundException
-     * @throws AuthVerificationInvalidException
+     * Мы отправим код на адрес.
+     * Адрес опционален — если null, сервис возьмёт из primary identity пользователя.
      */
-    public function withSentCode(ChannelAddress|null $address = null): AuthVerificationToken
+    public function withSentCode(ChannelAddress|null $address, string $code, DateInterval $ttl): ScenarioContext
     {
-        $resolved = $address ?? $this->resolveAddress();
-
-        if ($resolved === null) {
-            throw new AuthVerificationInvalidException(
-                'Address required: provide explicitly or ensure user has a primary identity for this provider.'
-            );
-        }
-
-        if (!$this->provider instanceof ProviderMessagingInterface) {
-            throw new AuthProviderUnsuitableException();
-        }
-
-        $createdAt = new DateTimeImmutable();
-        $result = $this->scenario->run(new IncomingMessage(
-            type: $this->type,
-            address: $resolved,
-            createdAt: $createdAt,
-        ));
-
-        if (!$result instanceof OutgoingStep) {
-            throw new AuthScenarioNotFoundException('Scenario must return OutgoingStep on first run.');
-        }
-
-        $token = null;
-
-        if ($result->nextStep instanceof HasVerificationCode) {
-            $now = new DateTimeImmutable();
-            $token = $this->writeAuthVerificationRepository->create(
-                type: $this->type,
-                code: new SentCode($result->nextStep->getVerificationCode(), $resolved),
-                createdAt: $now,
-                expiresAt: $now->add($result->nextStep->getVerificationTtl()),
-                action: $this->action,
-                userId: $this->userId,
-            )->token;
-        }
-
-        $externalId = $this->provider->sendStep(
-            to: $resolved,
-            step: $result->nextStep,
-            action: $this->action,
-            replyTo: null,
-        );
-
-        $this->transaction->transaction(function () use ($resolved, $createdAt, $result, $externalId): void {
-            $scenario = $this->writeScenarioRepository->create(
-                name: $this->scenarioName,
-                type: $this->type,
-                address: $resolved,
-                createdAt: $createdAt,
-                action: $this->action,
-                userId: $this->userId,
-            );
-            $this->writeScenarioStepRepository->create(
-                scenarioId: $scenario->id,
-                externalId: $externalId,
-                createdAt: $createdAt,
-                processedAt: $createdAt,
-                name: $this->getStepName($result->nextStep),
-                data: $result->nextStep->jsonSerialize(),
-                replyToExternalId: null,
-                replyToId: null,
-            );
-        });
-
-        if ($token === null) {
-            throw new AuthVerificationInvalidException('Scenario step must implement HasVerificationCode for withSentCode.');
-        }
-
-        return $token;
-    }
-
-
-    /**
-     * Запускает сценарий и отправляет первый шаг без верификации.
-     * Используется для уведомлений, опросов, онбординга — когда код не нужен.
-     * Адрес опционален — берётся из основного identity пользователя для этого провайдера.
-     *
-     * @throws AuthExceptionInterface
-     */
-    public function send(ChannelAddress|null $address = null): ScenarioStepId
-    {
-        $resolved = $address ?? $this->resolveAddress();
-
-        if ($resolved === null) {
-            throw new AuthVerificationInvalidException(
-                'Address required: provide explicitly or ensure user has a primary identity for this provider.'
-            );
-        }
-
-        if (!$this->provider instanceof ProviderMessagingInterface) {
-            throw new AuthProviderUnsuitableException();
-        }
-
-        $createdAt = new DateTimeImmutable();
-        $result = $this->scenario->run(new IncomingMessage(
-            type: $this->type,
-            address: $resolved,
-            createdAt: $createdAt,
-        ));
-
-        if (!$result instanceof OutgoingStep) {
-            throw new AuthScenarioNotFoundException('Scenario must return OutgoingStep on first run.');
-        }
-
-        $externalId = $this->provider->sendStep(
-            to: $resolved,
-            step: $result->nextStep,
-            action: $this->action,
-            replyTo: null,
-        );
-
-        return $this->transaction->transaction(function () use ($resolved, $createdAt, $result, $externalId): ScenarioStepId {
-            $scenario = $this->writeScenarioRepository->create(
-                name: $this->scenarioName,
-                type: $this->type,
-                address: $resolved,
-                createdAt: $createdAt,
-                action: $this->action,
-                userId: $this->userId,
-            );
-
-            return $this->writeScenarioStepRepository->create(
-                scenarioId: $scenario->id,
-                externalId: $externalId,
-                createdAt: $createdAt,
-                processedAt: $createdAt,
-                name: $this->getStepName($result->nextStep),
-                data: $result->nextStep->jsonSerialize(),
-                replyToExternalId: null,
-                replyToId: null,
-            )->id;
-        });
-    }
-
-    /**
-     * @throws AuthVerificationInvalidException
-     * @throws RandomException
-     */
-    public function withIssuedCode(): IssuedCodeResult
-    {
-        $result = $this->scenario->run(null);
-
-        if (!$result instanceof OutgoingStep) {
-            throw new AuthScenarioNotFoundException('Scenario must return OutgoingStep on first run.');
-        }
-
-        if (!$result->nextStep instanceof HasVerificationCode) {
-            throw new AuthVerificationInvalidException('Scenario step must implement HasVerificationCode for withIssuedCode.');
-        }
-
-        $code = bin2hex(random_bytes(16));
-        $now = new DateTimeImmutable();
-        $verification = $this->writeAuthVerificationRepository->create(
-            type: $this->type,
-            code: new IssuedCode($code),
-            createdAt: $now,
-            expiresAt: $now->add($result->nextStep->getVerificationTtl()),
+        return new ScenarioContext(
             action: $this->action,
             userId: $this->userId,
+            address: $address,
+            codeType: CodeType::Sent,
+            code: $code,
+            ttl: $ttl,
         );
-
-        return new IssuedCodeResult(token: $verification->token, code: $code);
     }
 
     /**
-     * @throws AuthProviderUnsuitableException
-     * @throws AuthVerificationInvalidException
-     * @throws RandomException
+     * Мы выдаём код пользователю (deeplink, QR).
      */
-    public function withOAuth(): OAuthStateOptions
+    public function withIssuedCode(string $code, DateInterval $ttl): ScenarioContext
     {
-        $result = $this->scenario->run(null);
-
-        if (!$result instanceof OutgoingStep) {
-            throw new AuthScenarioNotFoundException('Scenario must return OutgoingStep on first run.');
-        }
-
-        if (!$result->nextStep instanceof HasVerificationCode) {
-            throw new AuthVerificationInvalidException('Scenario step must implement HasVerificationCode for withOAuth.');
-        }
-
-        if (!$this->provider instanceof ProviderCallbackInterface) {
-            throw new AuthProviderUnsuitableException();
-        }
-
-        $state = new OAuthState(bin2hex(random_bytes(32)));
-        $now = new DateTimeImmutable();
-        $verification = $this->writeAuthVerificationRepository->create(
-            type: $this->type,
-            code: $state,
-            createdAt: $now,
-            expiresAt: $now->add($result->nextStep->getVerificationTtl()),
+        return new ScenarioContext(
             action: $this->action,
             userId: $this->userId,
+            codeType: CodeType::Issued,
+            code: $code,
+            ttl: $ttl,
         );
-
-        return new OAuthStateOptions($state, $verification->token);
     }
 
-
-    private function resolveAddress(): ChannelAddress|null
+    /**
+     * OAuth: генерируем state, фронт строит URL к провайдеру.
+     */
+    public function withOAuth(DateInterval $ttl): ScenarioContext
     {
-        $identity = $this->readAuthIdentityRepository->findPrimary($this->userId, $this->type);
-        return $identity?->address;
+        return new ScenarioContext(
+            action: $this->action,
+            userId: $this->userId,
+            codeType: CodeType::OAuthState,
+            ttl: $ttl,
+        );
     }
 
-    private function getStepName(mixed $step): string
+    /**
+     * Просто отправляем сценарий без верификации — уведомления, опросы, онбординг.
+     * Адрес опционален — если null, сервис возьмёт из primary identity пользователя.
+     */
+    public function send(ChannelAddress|null $address = null): ScenarioContext
     {
-        $steps = $this->scenario::getSteps();
-        $name = array_search($step::class, $steps, true);
-        return $name !== false ? (string) $name : $step::class;
+        return new ScenarioContext(
+            action: $this->action,
+            userId: $this->userId,
+            address: $address,
+        );
     }
 }
